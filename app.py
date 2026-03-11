@@ -157,15 +157,15 @@ def section_header(title: str, subtitle: str = ""):
 
 
 def hero_card(title: str, subtitle: str):
-        st.markdown(
-                f"""
+    st.markdown(
+        f"""
 <div class="hero-card">
     <p class="hero-card-title">{title}</p>
     <p class="hero-card-sub">{subtitle}</p>
 </div>
 """,
-                unsafe_allow_html=True,
-        )
+        unsafe_allow_html=True,
+    )
 
 
 # ─────────────────────────── Data loading ──────────────────────────
@@ -214,10 +214,7 @@ CONC_SCORE = {"Never": 0, "Rarely": 1, "Sometimes": 2, "Often": 3, "Always": 4}
 @st.cache_data
 def load_data() -> pd.DataFrame:
     base = Path(__file__).resolve().parent
-    csv_path = (
-        base.parent
-        / "Student Insomnia and Educational Outcomes Dataset"
-        / "Student Insomnia and Educational Outcomes Dataset_version-2.csv"
+    csv_path = ("Student Insomnia and Educational Outcomes Dataset_version-2.csv"
     )
     df = pd.read_csv(csv_path)
     df.columns = [
@@ -782,7 +779,9 @@ def main():
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        hero_card("Who?", f"{len(filtered):,} students from undergraduate to postgraduate")
+        hero_card(
+            "Who?", f"{len(filtered):,} students from undergraduate to postgraduate"
+        )
     with c2:
         hero_card("Where?", "Bangladesh")
     with c3:
