@@ -2,7 +2,7 @@ name: Streamlit Force Wakeup
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Une fois par jour à minuit
+    - cron: '0 */6 * * *'  
   workflow_dispatch:      # Pour le lancer à la main
 
 jobs:
