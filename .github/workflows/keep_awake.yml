@@ -1,23 +1,22 @@
-name: Streamlit Keep Alive
+name: Streamlit Force Wakeup
 
 on:
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 0 * * *' # Une fois par jour à minuit
+  workflow_dispatch:      # Pour le lancer à la main
 
 jobs:
-  ping_and_verify:
+  push_commit:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write     # Important pour le push
     steps:
-      - name: Check App Content
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Force Push Empty Commit
         run: |
-          # On télécharge le contenu de la page
-          # On cherche le mot "Sleep" ou "Quality" (présents dans ton titre)
-          curl -sL https://sleepquality-gpa.streamlit.app/ | grep -qi "Sleep"
-          
-          if [ $? -eq 0 ]; then
-            echo "✅ L'application est bien en ligne et accessible !"
-          else
-            echo "❌ L'application ne répond pas ou le contenu est bloqué."
-            exit 1
-          fi
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "Keep alive ping"
+          git push
