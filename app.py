@@ -4,13 +4,14 @@ A data-storytelling Streamlit app for exploring the relationship between
 sleep habits, lifestyle choices, and academic performance.
 """
 
+from pathlib import Path
+from typing import Literal
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from pathlib import Path
-from typing import Literal
 
 # ─────────────────────────── Page config ───────────────────────────
 
@@ -67,6 +68,13 @@ SLEEP_HOURS_SHORT = {
 }
 
 QUALITY_ORDER = ["Very poor", "Poor", "Average", "Good", "Very good"]
+QUALITY_SHORT = {
+    "Very poor": "Very poor",
+    "Poor": "Poor",
+    "Average": "Average",
+    "Good": "Good",
+    "Very good": "Very good",
+}
 STRESS_ORDER = ["No stress", "Low stress", "High stress", "Extremely high stress"]
 INSOMNIA_ORDER = [
     "Never",
@@ -214,8 +222,7 @@ CONC_SCORE = {"Never": 0, "Rarely": 1, "Sometimes": 2, "Often": 3, "Always": 4}
 @st.cache_data
 def load_data() -> pd.DataFrame:
     base = Path(__file__).resolve().parent
-    csv_path = ("Student Insomnia and Educational Outcomes Dataset_version-2.csv"
-    )
+    csv_path = "Student Insomnia and Educational Outcomes Dataset_version-2.csv"
     df = pd.read_csv(csv_path)
     df.columns = [
         "Timestamp",
@@ -275,31 +282,62 @@ def _layout(fig, height=420, margin=None):
 
 
 def chart_sleep_distribution(df):
-    """Vertical bar chart showing how many students fall into each sleep bucket."""
     counts = df["Sleep_Hours"].value_counts()
     ordered = [h for h in SLEEP_HOURS_ORDER if h in counts.index]
     labels = [SLEEP_HOURS_SHORT.get(h, h) for h in ordered]
     values = [counts[h] for h in ordered]
     pcts = [v / len(df) * 100 for v in values]
 
-    # Colour intensity: less sleep → redder
-    colors = ["#e74c3c", "#e67e22", "#f1c40f", "#82e0aa", "#2ecc71", "#1abc9c"]
-    colors = colors[: len(ordered)]
+    # On génère une liste de n couleurs allant du clair au foncé
+    n = len(ordered)
+    # On prend l'échelle 'Blues', et on demande n couleurs bien réparties
+    colors = px.colors.sample_colorscale("Blues", [i / (n - 1) for i in range(n)])
+    # ------------------------------------
 
     fig = go.Figure(
         go.Bar(
             y=values,
             x=labels,
-            orientation="v",
-            marker_color=colors,
-            text=[f"{v}  ({p:.0f}%)" for v, p in zip(values, pcts)],
+            marker_color=colors,  # Applique le dégradé
+            text=[f"{v} ({p:.0f}%)" for v, p in zip(values, pcts)],
             textposition="outside",
             hovertemplate="<b>%{y}</b><br>%{x} students<extra></extra>",
         )
     )
+
     fig.update_layout(
         title="How Much Sleep Are Students Really Getting?",
         xaxis_title="Sleep Duration",
+        yaxis_title="Number of Students",
+        showlegend=False,
+    )
+    return _layout(fig, height=400)
+
+
+def chart_sleep_quality_distribution(df):
+    counts = df["Sleep_Quality"].value_counts()
+    ordered = [q for q in QUALITY_ORDER if q in counts.index]
+    labels = [QUALITY_SHORT.get(q, q) for q in ordered]
+    values = [counts[q] for q in ordered]
+    pcts = [v / len(df) * 100 for v in values]
+
+    n = len(ordered)
+    colors = px.colors.sample_colorscale("Blues", [i / (n - 1) for i in range(n)])
+
+    fig = go.Figure(
+        go.Bar(
+            y=values,
+            x=labels,
+            marker_color=colors,
+            text=[f"{v} ({p:.0f}%)" for v, p in zip(values, pcts)],
+            textposition="outside",
+            hovertemplate="<b>%{y}</b><br>%{x} students<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        title="How Good Is Students' Sleep Quality?",
+        xaxis_title="Sleep Quality",
         yaxis_title="Number of Students",
         showlegend=False,
     )
@@ -327,12 +365,16 @@ def chart_stress_vs_insomnia(df):
         value_name="Percent",
     )
 
+    n = 5
+    # On prend l'échelle 'Blues', et on demande n couleurs bien réparties
+    colors = px.colors.sample_colorscale("BuPu", [i / (n - 1) for i in range(n)])
+
     color_map = {
-        "Never": "#2ecc71",
-        "Rarely (1-2 times a week)": "#82e0aa",
-        "Sometimes (3-4 times a week)": "#f1c40f",
-        "Often (5-6 times a week)": "#e67e22",
-        "Every night": "#e74c3c",
+        "Never": colors[0],
+        "Rarely (1-2 times a week)": colors[1],
+        "Sometimes (3-4 times a week)": colors[2],
+        "Often (5-6 times a week)": colors[3],
+        "Every night": colors[4],
     }
 
     fig = px.bar(
@@ -364,19 +406,38 @@ def chart_device_vs_sleep_quality(
     df, normalize_mode: Literal["index", "columns"] = "index"
 ):
     """Heatmap: device use frequency × sleep quality with switchable normalization."""
+    df_plot = df.copy()
+    screen_group_map = {
+        "Never": "Almost never",
+        "Rarely": "Almost never",
+        "Rarely (1-2 times a month)": "Almost never",
+        "Rarely (1-2 times a week)": "Almost never",
+        "Sometimes": "Sometimes",
+        "Sometimes (1-2 times a week)": "Sometimes",
+        "Sometimes (3-4 times a week)": "Sometimes",
+        "Often": "Very often",
+        "Often (5-6 times a week)": "Very often",
+        "Every night": "Very often",
+        "Every day": "Very often",
+        "Always": "Very often",
+    }
+    df_plot["Screen_Use_Group"] = df_plot["Device_Before_Sleep"].map(screen_group_map)
+
     ct = (
         pd.crosstab(
-            df["Device_Before_Sleep"],
-            df["Sleep_Quality"],
+            df_plot["Screen_Use_Group"],
+            df_plot["Sleep_Quality"],
             normalize=normalize_mode,
         )
         * 100
     )
-    dev_order = [f for f in FREQ_ORDER if f in ct.index]
+    dev_order = [
+        g for g in ["Almost never", "Sometimes", "Very often"] if g in ct.index
+    ]
     q_order = [q for q in QUALITY_ORDER if q in ct.columns]
     ct = ct.reindex(index=dev_order, columns=q_order).fillna(0)
 
-    row_labels = [FREQ_SHORT.get(d, d) for d in dev_order]
+    row_labels = dev_order
 
     fig = px.imshow(
         ct.values,
@@ -384,7 +445,7 @@ def chart_device_vs_sleep_quality(
         y=row_labels,
         text_auto=".0f",
         aspect="auto",
-        color_continuous_scale="YlOrRd",
+        color_continuous_scale="Oranges",
         labels=dict(x="Sleep Quality", y="Electronic Device Use Before Bed", color="%"),
     )
     subtitle = (
@@ -401,41 +462,62 @@ def chart_device_vs_sleep_quality(
 
 def chart_screen_time_vs_fatigue(df):
     """Stacked bar: device use before bed × fatigue frequency (% within device-use group)."""
-    ct = pd.crosstab(df["Device_Before_Sleep"], df["Fatigue"], normalize="index") * 100
-    ct_counts = pd.crosstab(df["Device_Before_Sleep"], df["Fatigue"])
+    df_plot = df.copy()
+    screen_map = {
+        "Never": "Almost never",
+        "Rarely": "Almost never",
+        "Rarely (1-2 times a month)": "Almost never",
+        "Rarely (1-2 times a week)": "Almost never",
+        "Sometimes": "Sometimes",
+        "Sometimes (1-2 times a week)": "Sometimes",
+        "Sometimes (3-4 times a week)": "Sometimes",
+        "Often": "Very often",
+        "Often (5-6 times a week)": "Very often",
+        "Every night": "Very often",
+        "Every day": "Very often",
+        "Always": "Very often",
+    }
+    df_plot["Screen_Use_Group"] = df_plot["Device_Before_Sleep"].map(screen_map)
 
-    rows = [f for f in FREQ_ORDER if f in ct.index]
-    cols = [f for f in FREQ_ORDER if f in ct.columns]
+    ct = (
+        pd.crosstab(df_plot["Screen_Use_Group"], df_plot["Fatigue"], normalize="index")
+        * 100
+    )
+    ct_counts = pd.crosstab(df_plot["Screen_Use_Group"], df_plot["Fatigue"])
+
+    rows = ["Almost never", "Sometimes", "Very often"]
+    cols = ["Never", "Rarely", "Sometimes", "Often", "Always"]
     ct = ct.reindex(index=rows, columns=cols).fillna(0)
     ct_counts = ct_counts.reindex(index=rows, columns=cols).fillna(0)
 
-    row_labels = [
-        f"{FREQ_SHORT.get(r, r)} (n={int(ct_counts.loc[r].sum())})" for r in rows
-    ]
-    ct.index = pd.Index(row_labels, name="Device_Before_Sleep")
+    row_labels = [f"{r} (n={int(np.asarray(ct_counts.loc[r]).sum())})" for r in rows]
+    ct.index = pd.Index(row_labels, name="Screen_Use_Group")
 
     long_df = ct.reset_index().melt(
-        id_vars="Device_Before_Sleep", var_name="Fatigue", value_name="Percent"
+        id_vars="Screen_Use_Group", var_name="Fatigue", value_name="Percent"
     )
 
+    n = 5
+    colors = px.colors.sample_colorscale("Oranges", [i / (n - 1) for i in range(n)])
+
     fatigue_color_map = {
-        "Never": "#2ecc71",
-        "Rarely": "#82e0aa",
-        "Sometimes": "#f1c40f",
-        "Often": "#e67e22",
-        "Always": "#922b21",
+        "Never": colors[0],
+        "Rarely": colors[1],
+        "Sometimes": colors[2],
+        "Often": colors[3],
+        "Always": colors[4],
     }
 
     fig = px.bar(
         long_df,
-        x="Device_Before_Sleep",
+        x="Screen_Use_Group",
         y="Percent",
         color="Fatigue",
-        barmode="stack",
+        barmode="group",
         color_discrete_map=fatigue_color_map,
-        category_orders={"Device_Before_Sleep": row_labels, "Fatigue": cols},
+        category_orders={"Screen_Use_Group": row_labels, "Fatigue": cols},
         labels={
-            "Device_Before_Sleep": "Screen use before bed",
+            "Screen_Use_Group": "Screen use before bed",
             "Percent": "Percentage of students",
             "Fatigue": "Fatigue frequency",
         },
@@ -456,40 +538,50 @@ def chart_screen_time_vs_fatigue(df):
 
 def chart_sleep_vs_concentration(df):
     """Stacked bar: sleep duration → concentration difficulty distribution."""
+    df_plot = df.copy()
+    sleep_group_map = {
+        "Less than 4 hours": "Less than 5h",
+        "4-5 hours": "Less than 5h",
+        "5-6 hours": "5 to 8 hours",
+        "6-7 hours": "5 to 8 hours",
+        "7-8 hours": "5 to 8 hours",
+        "More than 8 hours": "8+ hours",
+    }
+    df_plot["Sleep_Group"] = df_plot["Sleep_Hours"].map(sleep_group_map)
+
     ct = (
         pd.crosstab(
-            df["Sleep_Hours"], df["Difficulty_Concentrating"], normalize="index"
+            df_plot["Sleep_Group"],
+            df_plot["Difficulty_Concentrating"],
+            normalize="index",
         )
         * 100
     )
-    ct_counts = pd.crosstab(df["Sleep_Hours"], df["Difficulty_Concentrating"])
-    rows = [h for h in SLEEP_HOURS_ORDER if h in ct.index]
+    ct_counts = pd.crosstab(df_plot["Sleep_Group"], df_plot["Difficulty_Concentrating"])
+    rows = ["Less than 5h", "5 to 8 hours", "8+ hours"]
     cols = [c for c in CONC_ORDER if c in ct.columns]
     ct = ct.reindex(index=rows, columns=cols).fillna(0)
     ct_counts = ct_counts.reindex(index=rows, columns=cols).fillna(0)
 
-    sleep_labels = [
-        f"{SLEEP_HOURS_SHORT.get(h, h)} (n={int(ct_counts.loc[h].sum())})" for h in rows
-    ]
-    ct.index = pd.Index(sleep_labels, name="Sleep_Hours")
+    sleep_labels = [f"{h} (n={int(np.asarray(ct_counts.loc[h]).sum())})" for h in rows]
+    ct.index = pd.Index(sleep_labels, name="Sleep_Group")
 
-    color_map = dict(
-        zip(CONC_ORDER, ["#1abc9c", "#2ecc71", "#f1c40f", "#e67e22", "#e74c3c"])
-    )
+    teal_colors = px.colors.sample_colorscale("Tealgrn", [i / 4 for i in range(5)])
+    color_map = dict(zip(CONC_ORDER, teal_colors))
     long = ct.reset_index().melt(
-        id_vars="Sleep_Hours", var_name="Concentration Difficulty", value_name="Percent"
+        id_vars="Sleep_Group", var_name="Concentration Difficulty", value_name="Percent"
     )
 
     fig = px.bar(
         long,
-        x="Sleep_Hours",
+        x="Sleep_Group",
         y="Percent",
         color="Concentration Difficulty",
-        barmode="stack",
+        barmode="group",
         color_discrete_map=color_map,
         category_orders={
             "Concentration Difficulty": cols,
-            "Sleep_Hours": sleep_labels,
+            "Sleep_Group": sleep_labels,
         },
         title="Less Sleep → Harder to Focus",
     )
@@ -574,61 +666,90 @@ def chart_concentration_vs_performance(df):
 
 
 def chart_concentration_difficulty_vs_academic_performance(df):
-    """Stacked bar: concentration difficulty × academic performance (% within concentration)."""
+    """
+    3x3 Matrix: 3 Concentration groups vs 3 Performance groups.
+    """
+    df_plot = df.copy()
+
+    # 1. Regroupement de la difficulté de concentration (Axe X)
+    conc_map = {
+        "Never": "Low Difficulty",
+        "Rarely": "Low Difficulty",
+        "Sometimes": "Medium Difficulty",
+        "Often": "High Difficulty",
+        "Always": "High Difficulty",
+    }
+    df_plot["Conc_Group"] = df_plot["Difficulty_Concentrating"].map(conc_map)
+    conc_order = ["Low Difficulty", "Medium Difficulty", "High Difficulty"]
+
+    # 2. Regroupement de la Performance (3 Groupes)
+    perf_map = {
+        "Poor": "Low Performance",
+        "Below Average": "Low Performance",
+        "Average": "Average Performance",
+        "Good": "High Performance",
+        "Excellent": "High Performance",
+    }
+    df_plot["Perf_Group"] = df_plot["Academic_Performance"].map(perf_map)
+    # On définit l'ordre pour la légende (du moins bon au meilleur)
+    perf_order = ["Low Performance", "Average Performance", "High Performance"]
+
+    # 3. Calcul des statistiques
     ct = (
-        pd.crosstab(
-            df["Difficulty_Concentrating"],
-            df["Academic_Performance"],
-            normalize="index",
-        )
+        pd.crosstab(df_plot["Conc_Group"], df_plot["Perf_Group"], normalize="index")
         * 100
     )
-    ct_counts = pd.crosstab(df["Difficulty_Concentrating"], df["Academic_Performance"])
+    ct_counts = pd.crosstab(df_plot["Conc_Group"], df_plot["Perf_Group"])
 
-    conc_rows = [c for c in CONC_ORDER if c in ct.index]
-    perf_cols = [p for p in PERF_ORDER if p in ct.columns]
-    ct = ct.reindex(index=conc_rows, columns=perf_cols).fillna(0)
-    ct_counts = ct_counts.reindex(index=conc_rows, columns=perf_cols).fillna(0)
+    ct = ct.reindex(index=conc_order, columns=perf_order).fillna(0)
 
-    conc_labels = [f"{c} (n={int(ct_counts.loc[c].sum())})" for c in conc_rows]
-    ct.index = pd.Index(conc_labels, name="Difficulty_Concentrating")
+    # Labels de l'axe X avec le nombre d'étudiants (n=)
+    row_labels = {r: f"{r}<br>(n={int(ct_counts.loc[r].sum())})" for r in conc_order}
+    ct.index = ct.index.map(row_labels)
+    new_conc_order = list(row_labels.values())
+
+    # 4. Couleurs : Échelle séquentielle de Verts
+    # Plus de performance = Vert plus foncé (Darker = More)
+    perf_color_map = {
+        "Low Performance": "#e5f5e0",  # Vert très clair
+        "Average Performance": "#a1d99b",  # Vert intermédiaire
+        "High Performance": "#31a354",  # Vert foncé
+    }
 
     long_df = ct.reset_index().melt(
-        id_vars="Difficulty_Concentrating",
-        var_name="Academic_Performance",
+        id_vars="Conc_Group",
+        var_name="Performance_Group",
         value_name="Percent",
     )
 
-    perf_color_map = {
-        "Poor": "#e74c3c",
-        "Below Average": "#e67e22",
-        "Average": "#f1c40f",
-        "Good": "#82e0aa",
-        "Excellent": "#2ecc71",
-    }
-
     fig = px.bar(
         long_df,
-        x="Difficulty_Concentrating",
+        x="Conc_Group",
         y="Percent",
-        color="Academic_Performance",
-        barmode="stack",
+        color="Performance_Group",
+        barmode="group",
         color_discrete_map=perf_color_map,
         category_orders={
-            "Difficulty_Concentrating": conc_labels,
-            "Academic_Performance": perf_cols,
+            "Conc_Group": new_conc_order,
+            "Performance_Group": perf_order,
         },
         labels={
-            "Difficulty_Concentrating": "Concentration difficulty",
-            "Percent": "Percentage of students",
-            "Academic_Performance": "Academic performance",
+            "Conc_Group": "Concentration difficulty",
+            "Percent": "Percentage of students (%)",
+            "Performance_Group": "Academic Level",
         },
-        title="Concentration Difficulty vs Academic Performance",
+        title="Relationship between Concentration and Academic Level",
     )
+
     fig.update_layout(
-        xaxis_title="Concentration difficulty",
+        xaxis_title=None,
         yaxis_title="Percentage of students",
+        legend_title="Academic Level",
+        # On peut forcer la légende à apparaître dans l'ordre High -> Low
+        # pour que le vert foncé soit en haut de la légende si tu préfères
+        legend={"traceorder": "normal"},
     )
+
     return _layout(fig, height=400)
 
 
@@ -770,7 +891,7 @@ def main():
         return
 
     # ── Hero section ─────────────────────────────────────────────
-    st.markdown("# 🌙 Sleep & Grades — What 996 Students Revealed")
+    st.markdown("# 🌙 Sleep & Grades : What 996 Students Revealed")
     st.markdown(
         "*Everyone says sleep matters. But how much really? "
         "996 university students were asked about their nights, their stress, "
@@ -811,6 +932,18 @@ def main():
         f"report sleeping 7 hours or more ; that sounds healthy on paper. "
         f"But the real question isn't "
         f"just <em>how long</em> they sleep, it's <em>how well</em>. "
+    )
+
+    st.plotly_chart(
+        chart_sleep_quality_distribution(filtered), use_container_width=True
+    )
+
+    quality_poor = filtered[filtered["Sleep_Quality"].isin(["Very poor", "Poor"])]
+    pct_poor_quality = len(quality_poor) / len(filtered) * 100 if len(filtered) else 0
+    takeaway(
+        f"<strong>Takeaway:</strong> Almost <strong>{pct_poor_quality:.0f}%</strong> of students "
+        f"report <em>poor</em> or <em>very poor</em> sleep quality, which is the useful second lens here: "
+        f"sleep length and sleep quality do not always tell the same story. This is actually very worrying: even if most students are clocking 7+ hours, a significant portion of them aren't getting restorative sleep."
     )
 
     st.divider()
@@ -888,7 +1021,7 @@ def main():
         f"<strong>Takeaway:</strong> The data reveals a significant 'restoration gap.' "
         f"While screen use doesn't appear to degrade self-reported sleep quality, <strong>it is a primary driver of physical fatigue</strong>. "
         f"This suggests an 'illusion of rest': students may feel they are sleeping fine, but that sleep isn't actually recovery-focused. "
-        f"For the <strong>{heavy_users.shape[0] / filtered.shape[0] * 100:.0f}%</strong> of students using devices before bed, "
+        f"For the <strong>{heavy_users.shape[0] / filtered.shape[0] * 100:.0f}%</strong> of students using devices very often before bed, "
         f"the takeaway is clear: screen times are likely the hidden tax on energy levels, even if it doesn't feel as 'ruining' your sleep."
     )
 
@@ -919,7 +1052,7 @@ def main():
             f" students reporting the least amount of sleep claiming great concentration capabilities. "
             f"However this trend, especially for students sleeping less than 5 hours, has to be taken with "
             f"caution due to the low number of students in such cases. "
-            f"Those sleeping less than 5 hours might survive on sheer adrenaline and stress hormones, but it's not sustainable from a health perspective."
+            f"Those sleeping less than 5 hours might survive on sheer adrenaline and stress hormones and overestimate their concentration due to stress-induced alertness, but it's not sustainable from a health perspective."
         )
     else:
         takeaway(
@@ -972,10 +1105,26 @@ def main():
     section_header(
         "🔗 The Big Picture",
         "We've traced the chain link by link. Now let's zoom out and see how "
-        "every factor connects to every other — all at once.",
+        "every factor connects to every other, all at once.",
     )
 
     st.plotly_chart(chart_correlation_heatmap(filtered), use_container_width=True)
+
+    # --- LE GUIDE DE LECTURE (Feedback Prof) ---
+    with st.expander("💡 How to interpret these correlations?"):
+        st.markdown(
+            """
+        The values (Pearson's **r**) range from **-1.0 to +1.0**:
+        
+        * **+0.7 to +1.0**: **Strong Positive** relationship (e.g, factor A increases as factor B increases).
+        * **+0.3 to +0.7**: **Moderate Positive** relationship.
+        * **-0.3 to +0.3**: **Weak or No** relationship (the factors don't really influence each other).
+        * **-0.3 to -0.7**: **Moderate Negative** relationship.
+        * **-0.7 to -1.0**: **Strong Negative** relationship (e.g, factor A decreases as factor B increases).
+        
+        *Positive (+) means they move together, Negative (-) means they move in opposite directions.*
+        """
+        )
 
     """
 
